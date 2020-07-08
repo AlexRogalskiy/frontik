@@ -13,7 +13,6 @@ import tornado
 from lxml import etree
 from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
-from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
 from http_client import HttpClientFactory
 
@@ -26,6 +25,7 @@ from frontik.loggers import CUSTOM_JSON_EXTRA, JSON_REQUESTS_LOGGER
 from frontik.routing import FileMappingRouter, FrontikRouter
 from frontik.service_discovery import get_async_service_discovery
 from frontik.version import version as frontik_version
+from frontik.stack_context import StackContext
 
 
 app_logger = logging.getLogger('http_client')

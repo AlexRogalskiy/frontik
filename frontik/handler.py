@@ -10,11 +10,12 @@ from typing import TYPE_CHECKING
 import tornado.curl_httpclient
 import tornado.httputil
 import tornado.web
-from tornado import gen, stack_context
+from tornado import gen
 from tornado.ioloop import IOLoop
 from tornado.options import options
 from tornado.web import RequestHandler
 from http_client import FailFastError, HttpClient, RequestResult, USER_AGENT_HEADER
+from tornado.util import raise_exc_info
 
 import frontik.auth
 import frontik.handler_active_limit
@@ -30,6 +31,8 @@ from frontik.loggers.stages import StagesLogger
 from frontik.preprocessors import _get_preprocessors, _unwrap_preprocessors
 from frontik.util import make_url
 from frontik.version import version as frontik_version
+from frontik import stack_context
+
 
 if TYPE_CHECKING:
     from http_client import BalancedHttpRequest
@@ -109,6 +112,17 @@ class PageHandler(RequestHandler):
 
     def __repr__(self):
         return '.'.join([self.__module__, self.__class__.__name__])
+
+    def _stack_context_handle_exception(self, type, value, traceback):
+        try:
+            # For historical reasons _handle_request_exception only takes
+            # the exception value instead of the full triple,
+            # so re-raise the exception to ensure that it's in
+            # sys.exc_info()
+            raise_exc_info((type, value, traceback))
+        except Exception:
+            self._handle_request_exception(value)
+        return True
 
     def prepare(self):
         self.active_limit = frontik.handler_active_limit.ActiveHandlersLimit(self.statsd_client)
