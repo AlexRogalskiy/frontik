@@ -1,4 +1,4 @@
-from tornado import gen
+import asyncio
 
 from frontik.handler import PageHandler
 
@@ -20,7 +20,7 @@ class Page(PageHandler):
 
             # create race condition between postprocessors
             if handler.counter == 1:
-                yield gen.sleep(0.1)
+                await asyncio.sleep(0.1)
                 handler.json.put({
                     'postprocessor_completed': True
                 })

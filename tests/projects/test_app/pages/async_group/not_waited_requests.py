@@ -1,4 +1,4 @@
-from tornado import gen
+import asyncio
 
 from frontik.handler import AbortAsyncGroup, PageHandler
 
@@ -12,7 +12,7 @@ class Page(PageHandler):
             self.coro()
         else:
             while not all(x in self.data for x in ('put_made', 'post_made', 'delete_cancelled')):
-                yield gen.sleep(0.05)
+                await asyncio.sleep(0.05)
 
             self.json.put(self.data)
             self.data = {}
@@ -23,14 +23,13 @@ class Page(PageHandler):
             # HTTP requests with waited=False can be made after handler is finished
             self.json.put(self.put_url(self.request.host, self.request.path, waited=False))
 
-    @gen.coroutine
-    def coro(self):
-        result = yield self.post_url(self.request.host, self.request.path, waited=False)
+    async def coro(self):
+        result = await self.post_url(self.request.host, self.request.path, waited=False)
         self.json.put(result)
 
         # HTTP requests with waited=True are aborted after handler is finished
         try:
-            yield self.delete_url(self.request.host, self.request.path, waited=True)
+            await self.delete_url(self.request.host, self.request.path, waited=True)
         except AbortAsyncGroup:
             self.record_request({'delete_cancelled': True})
 

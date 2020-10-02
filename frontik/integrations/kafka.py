@@ -2,7 +2,6 @@ import asyncio
 from typing import TYPE_CHECKING
 
 from aiokafka import AIOKafkaProducer
-from tornado import gen
 
 from frontik.integrations import Integration
 from frontik.options import options
@@ -31,7 +30,7 @@ class KafkaIntegration(Integration):
                     self.kafka_producers[cluster_name] = producer
                     init_futures.append(asyncio.ensure_future(producer.start()))
 
-            return gen.multi(init_futures)
+            return asyncio.gather(init_futures)
 
         return None
 

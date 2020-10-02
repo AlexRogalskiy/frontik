@@ -27,7 +27,7 @@ class Page(PageHandler):
 ```
 
 Preprocessors are defined in `preprocessors` attribute of `PageHandler` or as decorators for a particular handler method.
-They are executed in order of declaration. Each preprocessor is converted to `tornado.gen.coroutine`, so they can be
+They are executed in order of declaration. Each preprocessor is converted to `async function`, so they can be
 asynchronous:
 
 ```python

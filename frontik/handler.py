@@ -1,4 +1,5 @@
 import http.client
+import asyncio
 import json
 import logging
 import re
@@ -10,7 +11,7 @@ from typing import TYPE_CHECKING
 import tornado.curl_httpclient
 import tornado.httputil
 import tornado.web
-from tornado import gen, stack_context
+from tornado import stack_context
 from tornado.ioloop import IOLoop
 from tornado.options import options
 from tornado.web import RequestHandler
@@ -225,46 +226,40 @@ class PageHandler(RequestHandler):
         with stack_context.ExceptionStackContext(self._stack_context_handle_exception):
             return super()._execute(transforms, *args, **kwargs)
 
-    @gen.coroutine
-    def get(self, *args, **kwargs):
-        yield self._execute_page(self.get_page)
+    async def get(self, *args, **kwargs):
+        await self._execute_page(self.get_page)
 
-    @gen.coroutine
-    def post(self, *args, **kwargs):
-        yield self._execute_page(self.post_page)
+    async def post(self, *args, **kwargs):
+        await self._execute_page(self.post_page)
 
-    @gen.coroutine
-    def head(self, *args, **kwargs):
-        yield self._execute_page(self.get_page)
+    async def head(self, *args, **kwargs):
+        await self._execute_page(self.get_page)
 
-    @gen.coroutine
-    def delete(self, *args, **kwargs):
-        yield self._execute_page(self.delete_page)
+    async def delete(self, *args, **kwargs):
+        await self._execute_page(self.delete_page)
 
-    @gen.coroutine
-    def put(self, *args, **kwargs):
-        yield self._execute_page(self.put_page)
+    async def put(self, *args, **kwargs):
+        await self._execute_page(self.put_page)
 
     def options(self, *args, **kwargs):
         self.__return_405()
 
-    @gen.coroutine
-    def _execute_page(self, page_handler_method):
+    async def _execute_page(self, page_handler_method):
         self.stages_logger.commit_stage('prepare')
 
         preprocessors = _unwrap_preprocessors(self.preprocessors) + _get_preprocessors(page_handler_method.__func__)
-        preprocessors_completed = yield self._run_preprocessors(preprocessors)
+        preprocessors_completed = await self._run_preprocessors(preprocessors)
 
         if not preprocessors_completed:
             self.log.info('page was already finished, skipping page method')
             return
 
-        yield gen.coroutine(page_handler_method)()
+        await page_handler_method()
 
         self._handler_finished_notification()
-        yield self.finish_group.get_finish_future()
+        await self.finish_group.get_finish_future()
 
-        render_result = yield self._postprocess()
+        render_result = await self._postprocess()
         if render_result is not None:
             self.write(render_result)
 
@@ -332,13 +327,12 @@ class PageHandler(RequestHandler):
 
         self.add_future(self._postprocess(), _cb)
 
-    @gen.coroutine
-    def _postprocess(self):
+    async def _postprocess(self):
         if self._finished:
             self.log.info('page was already finished, skipping postprocessors')
             return
 
-        postprocessors_completed = yield self._run_postprocessors(self._postprocessors)
+        postprocessors_completed = await self._run_postprocessors(self._postprocessors)
         self.stages_logger.commit_stage('page')
 
         if not postprocessors_completed:
@@ -353,9 +347,9 @@ class PageHandler(RequestHandler):
             renderer = self.xml_producer
 
         self.log.debug('using %s renderer', renderer)
-        rendered_result, meta_info = yield renderer()
+        rendered_result, meta_info = await renderer()
 
-        postprocessed_result = yield self._run_template_postprocessors(self._render_postprocessors,
+        postprocessed_result = await self._run_template_postprocessors(self._render_postprocessors,
                                                                        rendered_result, meta_info)
         return postprocessed_result
 
@@ -518,15 +512,14 @@ class PageHandler(RequestHandler):
             del self._mandatory_cookies[name]
         super().clear_cookie(name, path, domain)
 
-    @gen.coroutine
-    def _run_preprocessors(self, preprocessors):
+    async def _run_preprocessors(self, preprocessors):
         for p in preprocessors:
-            yield gen.coroutine(p)(self)
+            await p(self)
             if self._finished:
                 self.log.info('page was already finished, breaking preprocessors chain')
                 return False
 
-        yield gen.multi(self._preprocessor_futures)
+        await asyncio.gather(self._preprocessor_futures)
 
         self._preprocessor_futures = None
 
@@ -536,10 +529,9 @@ class PageHandler(RequestHandler):
 
         return True
 
-    @gen.coroutine
-    def _run_postprocessors(self, postprocessors):
+    async def _run_postprocessors(self, postprocessors):
         for p in postprocessors:
-            yield gen.coroutine(p)(self)
+            await p(self)
 
             if self._finished:
                 self.log.warning('page was already finished, breaking postprocessors chain')
@@ -547,10 +539,9 @@ class PageHandler(RequestHandler):
 
         return True
 
-    @gen.coroutine
-    def _run_template_postprocessors(self, postprocessors, rendered_template, meta_info):
+    async def _run_template_postprocessors(self, postprocessors, rendered_template, meta_info):
         for p in postprocessors:
-            rendered_template = yield gen.coroutine(p)(self, rendered_template, meta_info)
+            rendered_template = await p(self, rendered_template, meta_info)
 
             if self._finished:
                 self.log.warning('page was already finished, breaking postprocessors chain')
@@ -628,7 +619,7 @@ class PageHandler(RequestHandler):
 
         return group_future
 
-    def get_url(self, host, uri, *, name=None, data=None, headers=None, follow_redirects=True,
+    async def get_url(self, host, uri, *, name=None, data=None, headers=None, follow_redirects=True,
                 connect_timeout=None, request_timeout=None, max_timeout_tries=None,
                 callback=None, waited=True, parse_response=True, parse_on_error=True, fail_fast=False):
 
