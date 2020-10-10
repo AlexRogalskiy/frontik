@@ -23,7 +23,7 @@ def fork_workers(worker_function, *, num_workers, after_workers_up_action, befor
     state = State(server=True, children={}, terminating=False)
 
     def sigterm_handler(signum, frame):
-        if not state.server:
+        if not state.server or state.terminating:
             return
 
         state.terminating = True

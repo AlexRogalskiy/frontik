@@ -108,6 +108,7 @@ class FrontikApplication(Application):
 
     def __init__(self, **settings):
         self.start_time = time.time()
+        self.terminating_server = False
 
         tornado_settings = settings.get('tornado_settings')
         if tornado_settings is None:

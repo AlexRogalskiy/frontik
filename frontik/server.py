@@ -114,13 +114,19 @@ async def run_server(app: FrontikApplication, ioloop: BaseAsyncIOLoop, need_to_r
     if options.autoreload:
         tornado.autoreload.start(1000)
 
-    def sigterm_handler(signum, frame):
-        log.info('requested shutdown')
-        log.info('shutting down server on %s:%d', options.host, options.port)
-        ioloop.add_callback_from_signal(server_stop)
-
     def ioloop_is_running():
         return ioloop.asyncio_loop.is_running()
+
+    def sigterm_handler(signum, frame):
+        if app.terminating_server:
+            return
+
+        app.terminating_server = True
+        if ioloop_is_running():
+            log.info('requested shutdown')
+            log.info('shutting down server on %s:%d', options.host, options.port)
+
+        ioloop.add_callback_from_signal(server_stop)
 
     def server_stop():
         ioloop.asyncio_loop.create_task(_deinit_app(app, ioloop, need_to_register_in_service_discovery))
