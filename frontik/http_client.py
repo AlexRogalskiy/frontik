@@ -1,7 +1,6 @@
 import asyncio
 import json
 import re
-import socket
 import time
 from asyncio import Future
 
@@ -454,15 +453,8 @@ class BalancedHttpRequest:
 
 
 class HttpClientFactory:
-    def __init__(self, application, upstreams):
-        AsyncHTTPClient.configure('tornado.curl_httpclient.CurlAsyncHTTPClient', max_clients=options.max_http_clients)
-
-        self.tornado_http_client = AsyncHTTPClient()
-        self.hostname = socket.gethostname()
-
-        if options.max_http_clients_connects is not None:
-            self.tornado_http_client._multi.setopt(pycurl.M_MAXCONNECTS, options.max_http_clients_connects)
-
+    def __init__(self, application, tornado_http_client, upstreams):
+        self.tornado_http_client = tornado_http_client
         self.application = application
         self.upstreams = {}
 
@@ -496,6 +488,7 @@ class HttpClientFactory:
             if outer_timeout:
                 timeout_checker = get_timeout_checker(request.headers.get(USER_AGENT_HEADER), float(outer_timeout),
                                                       request.request_time)
+
 
         return HttpClient(
             self.tornado_http_client, self.application.app,
