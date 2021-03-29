@@ -1,6 +1,6 @@
 import unittest
 
-from http_client import BalancedHttpRequest, Upstream, USER_AGENT_HEADER
+from http_client import BalancedHttpRequest, Upstream, USER_AGENT_HEADER, ServerStatistics
 
 from frontik import media_types
 from frontik.debug import request_to_curl_string
@@ -10,7 +10,7 @@ class CurlStringTestCase(unittest.TestCase):
     def test_curl_string_get(self):
         request = BalancedHttpRequest('http://test.com', Upstream.get_single_host_upstream(), 'test', '/path', 'test',
                                       data={'param': 'value'},
-                                      headers={'Accept': media_types.APPLICATION_JSON}).make_request()
+                                      headers={'Accept': media_types.APPLICATION_JSON}).make_request(ServerStatistics())
 
         self.assertEqual(
             request_to_curl_string(request),
@@ -21,7 +21,7 @@ class CurlStringTestCase(unittest.TestCase):
     def test_curl_string_post(self):
         request = BalancedHttpRequest('http://test.com', Upstream.get_single_host_upstream(), 'test', '/path', 'test',
                                       data={'param': 'value'},
-                                      method='POST').make_request()
+                                      method='POST').make_request(ServerStatistics())
 
         self.assertEqual(
             request_to_curl_string(request),
@@ -34,7 +34,7 @@ class CurlStringTestCase(unittest.TestCase):
         request = BalancedHttpRequest('http://test.com', Upstream.get_single_host_upstream(), 'test', '/path', 'test',
                                       data='DATA',
                                       method='PUT',
-                                      content_type=media_types.TEXT_PLAIN).make_request()
+                                      content_type=media_types.TEXT_PLAIN).make_request(ServerStatistics())
 
         self.assertEqual(
             request_to_curl_string(request),
@@ -46,7 +46,7 @@ class CurlStringTestCase(unittest.TestCase):
         request = BalancedHttpRequest('http://test.com', Upstream.get_single_host_upstream(), 'test', '/path', 'test',
                                       data='тест',
                                       method='POST',
-                                      content_type=media_types.TEXT_PLAIN).make_request()
+                                      content_type=media_types.TEXT_PLAIN).make_request(ServerStatistics())
 
         self.assertEqual(
             request_to_curl_string(request),

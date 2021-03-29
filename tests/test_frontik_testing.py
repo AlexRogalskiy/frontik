@@ -35,6 +35,7 @@ class CheckConfigHandler(PageHandler):
 class TestFrontikTesting(FrontikTestCase):
     def setUp(self):
         options.options.__setattr__('node_name', 'test_node')
+        options.options.__setattr__('is_test', True)
         super().setUp()
         self.configure_app(serviceHost='http://service.host')
 

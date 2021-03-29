@@ -5,7 +5,6 @@ import logging
 import os.path
 import re
 import signal
-import socket
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial

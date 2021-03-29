@@ -1,5 +1,6 @@
 import asyncio
 import importlib
+import multiprocessing
 import sys
 import time
 import traceback
@@ -9,12 +10,14 @@ import logging
 
 import pycurl
 import tornado
+from consul.base import KVCache, HealthCache
+from http_client.consul_parser import parse_consul_health_service, parse_upstream_config
 from lxml import etree
 from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
 from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
-from http_client import HttpClientFactory
+from http_client import HttpClientFactory, Upstream
 
 import frontik.producers.json_producer
 import frontik.producers.xml_producer
@@ -23,9 +26,8 @@ from frontik.debug import DebugTransform
 from frontik.handler import ErrorHandler
 from frontik.loggers import CUSTOM_JSON_EXTRA, JSON_REQUESTS_LOGGER
 from frontik.routing import FileMappingRouter, FrontikRouter
-from frontik.service_discovery import get_async_service_discovery
+from frontik.service_discovery import get_async_service_discovery, get_sync_service_discovery
 from frontik.version import version as frontik_version
-
 
 app_logger = logging.getLogger('http_client')
 
@@ -125,6 +127,14 @@ class FrontikApplication(Application):
         self.tornado_http_client = None
         self.http_client_factory = None
 
+        self.upstream_list = options.upstreams.split(',')
+        self.datacenter_list = options.datacenters.split(',')
+        self.current_dc = options.datacenter
+        self.allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
+        self.upstreams_config = dict()
+        self.upstreams_servers = dict()
+        self.upstreams = multiprocessing.Manager().dict()
+
         self.router = FrontikRouter(self)
 
         core_handlers = [
@@ -135,8 +145,62 @@ class FrontikApplication(Application):
 
         if options.debug:
             core_handlers.insert(0, (r'/pydevd/?', PydevdHandler))
+        if options.consul_enabled and not options.is_test:
+            service_discovery = get_sync_service_discovery(options)
+            self.upstream_cache = KVCache(
+                service_discovery.consul.kv,
+                path='upstream/',
+                watch_seconds=service_discovery.consul_weight_watch_seconds,
+                total_timeout=service_discovery.consul_weight_total_timeout_sec,
+                cache_initial_warmup_timeout=service_discovery.consul_cache_initial_warmup_timeout_sec,
+                consistency_mode=service_discovery.consul_weight_consistency_mode,
+                recurse=True
+            )
+            self.upstream_cache.add_listener(self._update_upstreams_config, True)
+            self.upstream_cache.start()
+            for upstream in self.upstream_list:
+                app_logger.info(f'add upstream {upstream}')
+                if self.allow_cross_dc_requests:
+                    for dc in self.datacenter_list:
+                        health_cache = HealthCache(
+                            service=upstream,
+                            health_client=service_discovery.consul.health,
+                            passing=True,
+                            watch_seconds=service_discovery.consul_weight_watch_seconds,
+                            dc=dc.lower()
+                        )
+                        health_cache.add_listener(self._update_upstreams_service, True)
+                        health_cache.start()
+                else:
+                    health_cache = HealthCache(
+                        service=upstream,
+                        health_client=service_discovery.consul.health,
+                        passing=True,
+                        watch_seconds=service_discovery.consul_weight_watch_seconds,
+                        dc=self.current_dc
+                    )
+                    health_cache.add_listener(self._update_upstreams_service, True)
+                    health_cache.start()
 
         super().__init__(core_handlers, **tornado_settings)
+
+    def _update_upstreams_service(self, key, values):
+        if values is not None:
+            servers = parse_consul_health_service(values)
+            self.upstreams_servers[key] = servers
+            self._update_upstreams(key)
+
+    def _update_upstreams_config(self, key, values):
+        if values is not None:
+            for value in values:
+                if value['Value'] is not None:
+                    config = parse_upstream_config(value)
+                    if value['Key'].split('/')[1] in self.upstream_list:
+                        self.upstreams_config[value['Key'].split('/')[1]] = config
+                        self._update_upstreams(value['Key'].split('/')[1])
+
+    def _update_upstreams(self, key):
+        self.upstreams[key] = Upstream(key, self.upstreams_config.get(key, {}), self.upstreams_servers.get(key, []))
 
     async def init(self):
         self.service_discovery_client = get_async_service_discovery(options)
@@ -165,7 +229,7 @@ class FrontikApplication(Application):
         kafka_producer = self.get_kafka_producer(kafka_cluster) if send_metrics_to_kafka else None
 
         self.http_client_factory = HttpClientFactory(self.app, self.tornado_http_client,
-                                                     getattr(self.config, 'http_upstreams', {}),
+                                                     self.upstreams,
                                                      statsd_client=self.statsd_client, kafka_producer=kafka_producer)
 
     def find_handler(self, request, **kwargs):
