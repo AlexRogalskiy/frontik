@@ -134,6 +134,7 @@ class FrontikApplication(Application):
         self.upstreams_config = dict()
         self.upstreams_servers = dict()
         self.upstreams = multiprocessing.Manager().dict()
+        self.lock = multiprocessing.Lock()
 
         self.router = FrontikRouter(self)
 
@@ -195,12 +196,17 @@ class FrontikApplication(Application):
             for value in values:
                 if value['Value'] is not None:
                     config = parse_upstream_config(value)
-                    if value['Key'].split('/')[1] in self.upstream_list:
-                        self.upstreams_config[value['Key'].split('/')[1]] = config
-                        self._update_upstreams(value['Key'].split('/')[1])
+                    key = value['Key'].split('/')[1]
+                    if key in self.upstream_list:
+                        self.upstreams_config[key] = config
+                        self._update_upstreams(key)
 
     def _update_upstreams(self, key):
-        self.upstreams[key] = Upstream(key, self.upstreams_config.get(key, {}), self.upstreams_servers.get(key, []))
+        self.lock.acquire()
+        try:
+            self.upstreams[key] = Upstream(key, self.upstreams_config.get(key, {}), self.upstreams_servers.get(key, []))
+        finally:
+            self.lock.release()
 
     async def init(self):
         self.service_discovery_client = get_async_service_discovery(options)
@@ -230,6 +236,7 @@ class FrontikApplication(Application):
 
         self.http_client_factory = HttpClientFactory(self.app, self.tornado_http_client,
                                                      self.upstreams,
+                                                     self.lock,
                                                      statsd_client=self.statsd_client, kafka_producer=kafka_producer)
 
     def find_handler(self, request, **kwargs):
