@@ -11,13 +11,12 @@ import logging
 import pycurl
 import tornado
 from consul.base import KVCache, HealthCache
-from http_client.consul_parser import parse_consul_health_service, parse_upstream_config
 from lxml import etree
 from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
 from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
-from http_client import HttpClientFactory, Upstream
+from http_client import HttpClientFactory, Upstream, consul_parser
 
 import frontik.producers.json_producer
 import frontik.producers.xml_producer
@@ -187,7 +186,7 @@ class FrontikApplication(Application):
 
     def _update_upstreams_service(self, key, values):
         if values is not None:
-            servers = parse_consul_health_service(values)
+            servers = consul_parser.parse_consul_health_servers_data(values)
             self.upstreams_servers[key] = servers
             self._update_upstreams(key)
 
@@ -195,7 +194,7 @@ class FrontikApplication(Application):
         if values is not None:
             for value in values:
                 if value['Value'] is not None:
-                    config = parse_upstream_config(value)
+                    config = consul_parser.parse_consul_upstream_config(value)
                     key = value['Key'].split('/')[1]
                     if key in self.upstream_list:
                         self.upstreams_config[key] = config
