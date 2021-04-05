@@ -130,8 +130,8 @@ class FrontikApplication(Application):
         self.datacenter_list = options.datacenters.split(',')
         self.current_dc = options.datacenter
         self.allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
-        self.upstreams_config = dict()
-        self.upstreams_servers = dict()
+        self.upstreams_config = {}
+        self.upstreams_servers = {}
         self.upstreams = multiprocessing.Manager().dict()
         self.lock = multiprocessing.Lock()
 

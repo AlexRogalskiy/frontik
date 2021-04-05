@@ -18,7 +18,7 @@ define('xheaders', default=False, type=bool)
 define('config', None, str)
 define('host', '0.0.0.0', str)
 define('port', 8080, int)
-if not options.__contains__('node_name'):
+if 'node_name' not in options:
     define('node_name', default='', type=str)
 define('common_executor_pool_size', 10, int)
 
