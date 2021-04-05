@@ -19,7 +19,10 @@ class Page(PageHandler):
                                                                       [free_server, normal_server])
 
         def callback(text, response):
-            if self.application.http_client_factory.server_statistics.get(free_server.address).requests != 1:
+            server = next(
+                s for s in self._http_client.upstreams_local.get('different_datacenter').servers if
+                self.get_argument('free') in s.address)
+            if server.requests != 1:
                 raise HTTPError(500)
 
             if response.error and response.code == 502:

@@ -12,7 +12,6 @@ class Page(handler.PageHandler):
         self.application.upstreams['no_retry_timeout'] = Upstream('no_retry_timeout', {},
                                                                   [get_server(self, 'broken'),
                                                                    get_server(self, 'normal')])
-        self.application.http_client_factory.server_statistics.clear()
 
         def check_requests_cb():
             check_all_requests_done(self, 'no_retry_timeout')
@@ -27,7 +26,7 @@ class Page(handler.PageHandler):
             self.text = text
 
         self.post_url('no_retry_timeout', self.request.path, callback=async_group.add(callback_post),
-                      request_timeout=0.1)
+                      request_timeout=0.2)
 
     def post_page(self):
         self.add_header('Content-Type', media_types.TEXT_PLAIN)
