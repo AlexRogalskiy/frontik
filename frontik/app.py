@@ -235,7 +235,7 @@ class FrontikApplication(Application):
 
         self.http_client_factory = HttpClientFactory(self.app, self.tornado_http_client,
                                                      self.upstreams,
-                                                     self.lock,
+                                                     lock=self.lock,
                                                      statsd_client=self.statsd_client, kafka_producer=kafka_producer)
 
     def find_handler(self, request, **kwargs):
