@@ -132,7 +132,8 @@ class FrontikApplication(Application):
         self.allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
         self.upstreams_config = {}
         self.upstreams_servers = {}
-        self.upstreams = multiprocessing.Manager().dict()
+        self.shared_objects_manager = multiprocessing.Manager()
+        self.upstreams = self.shared_objects_manager.dict()
         self.lock = multiprocessing.Lock()
 
         self.router = FrontikRouter(self)
@@ -336,3 +337,6 @@ class FrontikApplication(Application):
 
     def get_sentry_logger(self, request: 'HTTPServerRequest') -> 'Optional[SentryLogger]':  # pragma: no cover
         pass
+
+    def stop_shared_objects_manager(self):
+        self.shared_objects_manager.shutdown()
