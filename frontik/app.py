@@ -335,7 +335,7 @@ class FrontikApplication(Application):
     def get_sentry_logger(self, request: 'HTTPServerRequest') -> 'Optional[SentryLogger]':  # pragma: no cover
         pass
 
-    def stop_shared_objects_manager(self):
+    def _stop_shared_objects_manager(self):
         self.shared_objects_manager.shutdown()
 
 
@@ -353,4 +353,3 @@ class UpstreamStoreSharedMemory(UpstreamStore):
             shared_upstream = self.upstreams.get(name, None)
 
         return shared_upstream
-

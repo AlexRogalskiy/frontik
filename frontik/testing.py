@@ -57,7 +57,7 @@ class FrontikTestCase(AsyncHTTPTestCase):
 
     def tearDown(self) -> None:
         super().tearDown()
-        self._app.stop_shared_objects_manager()
+        self._app._stop_shared_objects_manager()
 
     def configure_app(self, **kwargs):
         """Updates or adds options to application config."""
