@@ -16,7 +16,7 @@ from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
 from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
-from http_client import HttpClientFactory, Upstream, consul_parser, UpstreamProcessing
+from http_client import HttpClientFactory, Upstream, consul_parser, UpstreamStore
 
 import frontik.producers.json_producer
 import frontik.producers.xml_producer
@@ -135,7 +135,7 @@ class FrontikApplication(Application):
         self.shared_objects_manager = multiprocessing.Manager()
         self.upstreams = self.shared_objects_manager.dict()
         self.lock = multiprocessing.Lock()
-        self.upstream_processing = None
+        self.upstream_store = None
         self.router = FrontikRouter(self)
 
         core_handlers = [
@@ -202,16 +202,13 @@ class FrontikApplication(Application):
                         self._update_upstreams(key)
 
     def _update_upstreams(self, key):
-        self.lock.acquire()
-        try:
+        with self.lock:
             self.upstreams[key] = Upstream(key, self.upstreams_config.get(key, {}), self.upstreams_servers.get(key, []))
-        finally:
-            self.lock.release()
 
     async def init(self):
         self.service_discovery_client = get_async_service_discovery(options)
         self.transforms.insert(0, partial(DebugTransform, self))
-        self.upstream_processing = UpstreamProcessingSharedMemory(self.lock, self.upstreams)
+        self.upstream_store = UpstreamStoreSharedMemory(self.lock, self.upstreams)
 
         AsyncHTTPClient.configure('tornado.curl_httpclient.CurlAsyncHTTPClient', max_clients=options.max_http_clients)
         self.tornado_http_client = AsyncHTTPClient()
@@ -236,7 +233,7 @@ class FrontikApplication(Application):
         kafka_producer = self.get_kafka_producer(kafka_cluster) if send_metrics_to_kafka else None
 
         self.http_client_factory = HttpClientFactory(self.app, self.tornado_http_client,
-                                                     upstream_processing=self.upstream_processing,
+                                                     upstream_store=self.upstream_store,
                                                      statsd_client=self.statsd_client, kafka_producer=kafka_producer)
 
     def find_handler(self, request, **kwargs):
@@ -342,7 +339,7 @@ class FrontikApplication(Application):
         self.shared_objects_manager.shutdown()
 
 
-class UpstreamProcessingSharedMemory(UpstreamProcessing):
+class UpstreamStoreSharedMemory(UpstreamStore):
     """
     Implementation for processing upstream via shared memory
     """
@@ -358,11 +355,3 @@ class UpstreamProcessingSharedMemory(UpstreamProcessing):
 
         return shared_upstream
 
-    def get_upstreams(self):
-        super().get_upstreams()
-
-    def add_or_update_upstream_by_name(self, name, upstream):
-        super().add_or_update_upstream_by_name(name, upstream)
-
-    def remove_upstream_by_name(self, name):
-        super().remove_upstream_by_name(name)
