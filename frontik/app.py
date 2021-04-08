@@ -16,7 +16,7 @@ from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
 from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
-from http_client import HttpClientFactory, Upstream, consul_parser
+from http_client import HttpClientFactory, Upstream, consul_parser, UpstreamProcessing
 
 import frontik.producers.json_producer
 import frontik.producers.xml_producer
@@ -135,7 +135,7 @@ class FrontikApplication(Application):
         self.shared_objects_manager = multiprocessing.Manager()
         self.upstreams = self.shared_objects_manager.dict()
         self.lock = multiprocessing.Lock()
-
+        self.upstream_processing = None
         self.router = FrontikRouter(self)
 
         core_handlers = [
@@ -211,6 +211,7 @@ class FrontikApplication(Application):
     async def init(self):
         self.service_discovery_client = get_async_service_discovery(options)
         self.transforms.insert(0, partial(DebugTransform, self))
+        self.upstream_processing = UpstreamProcessingSharedMemory(self.lock, self.upstreams)
 
         AsyncHTTPClient.configure('tornado.curl_httpclient.CurlAsyncHTTPClient', max_clients=options.max_http_clients)
         self.tornado_http_client = AsyncHTTPClient()
@@ -235,8 +236,7 @@ class FrontikApplication(Application):
         kafka_producer = self.get_kafka_producer(kafka_cluster) if send_metrics_to_kafka else None
 
         self.http_client_factory = HttpClientFactory(self.app, self.tornado_http_client,
-                                                     self.upstreams,
-                                                     lock=self.lock,
+                                                     upstream_processing=self.upstream_processing,
                                                      statsd_client=self.statsd_client, kafka_producer=kafka_producer)
 
     def find_handler(self, request, **kwargs):
@@ -340,3 +340,29 @@ class FrontikApplication(Application):
 
     def stop_shared_objects_manager(self):
         self.shared_objects_manager.shutdown()
+
+
+class UpstreamProcessingSharedMemory(UpstreamProcessing):
+    """
+    Implementation for processing upstream via shared memory
+    """
+
+    def __init__(self, lock, upstreams):
+        self.lock = lock
+        self.upstreams = upstreams
+
+    def get_upstream_by_name(self, name):
+        upstream_single_host = Upstream.get_single_host_upstream()
+        with self.lock:
+            shared_upstream = self.upstreams.get(name, upstream_single_host)
+
+        return shared_upstream
+
+    def get_upstreams(self):
+        super().get_upstreams()
+
+    def add_or_update_upstream_by_name(self, name, upstream):
+        super().add_or_update_upstream_by_name(name, upstream)
+
+    def remove_upstream_by_name(self, name):
+        super().remove_upstream_by_name(name)
