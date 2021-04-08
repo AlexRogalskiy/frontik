@@ -349,9 +349,8 @@ class UpstreamStoreSharedMemory(UpstreamStore):
         self.upstreams = upstreams
 
     def get_upstream_by_name(self, name):
-        upstream_single_host = Upstream.get_single_host_upstream()
         with self.lock:
-            shared_upstream = self.upstreams.get(name, upstream_single_host)
+            shared_upstream = self.upstreams.get(name, None)
 
         return shared_upstream
 

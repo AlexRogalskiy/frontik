@@ -20,7 +20,7 @@ class Page(PageHandler):
 
         def callback(text, response):
             server = next(
-                s for s in self._http_client.upstreams_local.get('different_datacenter').servers if
+                s for s in self._http_client.upstreams.get('different_datacenter').servers if
                 self.get_argument('free') in s.address)
             if server.requests != 1:
                 raise HTTPError(500)
