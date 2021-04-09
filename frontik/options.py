@@ -91,4 +91,3 @@ define('consul_weight_consistency_mode', default=options.consul_consistency_mode
 
 define('upstreams', default='', type=str)
 define('datacenters', default='', type=str)
-define('is_test', default=False, type=bool)

@@ -135,7 +135,7 @@ class FrontikApplication(Application):
 
         if options.debug:
             core_handlers.insert(0, (r'/pydevd/?', PydevdHandler))
-        if options.consul_enabled and not options.is_test:
+        if options.consul_enabled:
             self.upstream_caches.initial_upstreams_caches()
 
         super().__init__(core_handlers, **tornado_settings)

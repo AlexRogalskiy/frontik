@@ -34,8 +34,7 @@ class CheckConfigHandler(PageHandler):
 
 class TestFrontikTesting(FrontikTestCase):
     def setUp(self):
-        tornado.options.options.node_name = 'test_node'
-        tornado.options.options.is_test = True
+        tornado.options.options.consul_enabled = False
         super().setUp()
         self.configure_app(serviceHost='http://service.host')
 
