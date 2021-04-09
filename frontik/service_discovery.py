@@ -1,8 +1,11 @@
 import logging
+import multiprocessing
 
 from consul import Check, Consul
 from consul.aio import Consul as AsyncConsul
-from consul.base import Weight, KVCache, ConsistencyMode
+from consul.base import Weight, KVCache, ConsistencyMode, HealthCache
+from http_client import UpstreamStore, consul_parser, Upstream
+from tornado.options import options
 
 from frontik.version import version
 
@@ -169,3 +172,93 @@ class _SyncStub:
 
     def deregister_service_and_close(self):
         pass
+
+
+class UpstreamStoreSharedMemory(UpstreamStore):
+    """
+    Implementation for processing upstream via shared memory
+    """
+
+    def __init__(self, lock, upstreams):
+        self.lock = lock
+        self.upstreams = upstreams
+
+    def get_upstream(self, host):
+        with self.lock:
+            shared_upstream = self.upstreams.get(host, None)
+
+        return shared_upstream
+
+
+class UpstreamCaches:
+    def __init__(self):
+        self._upstreams_config = {}
+        self._upstreams_servers = {}
+        self._upstream_list = options.upstreams.split(',')
+        self._datacenter_list = options.datacenters.split(',')
+        self._current_dc = options.datacenter
+        self._allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
+        self._shared_objects_manager = multiprocessing.Manager()
+
+        self.upstreams = self._shared_objects_manager.dict()
+        self.lock = multiprocessing.Lock()
+
+    def initial_upstreams_caches(self):
+        service_discovery = get_sync_service_discovery(options)
+        upstream_cache = KVCache(
+            service_discovery.consul.kv,
+            path='upstream/',
+            watch_seconds=service_discovery.consul_weight_watch_seconds,
+            total_timeout=service_discovery.consul_weight_total_timeout_sec,
+            cache_initial_warmup_timeout=service_discovery.consul_cache_initial_warmup_timeout_sec,
+            consistency_mode=service_discovery.consul_weight_consistency_mode,
+            recurse=True
+        )
+        upstream_cache.add_listener(self._update_upstreams_config, True)
+        upstream_cache.start()
+        for upstream in self._upstream_list:
+            if self._allow_cross_dc_requests:
+                for dc in self._datacenter_list:
+                    health_cache = HealthCache(
+                        service=upstream,
+                        health_client=service_discovery.consul.health,
+                        passing=True,
+                        watch_seconds=service_discovery.consul_weight_watch_seconds,
+                        dc=dc.lower()
+                    )
+                    health_cache.add_listener(self._update_upstreams_service, True)
+                    health_cache.start()
+            else:
+                health_cache = HealthCache(
+                    service=upstream,
+                    health_client=service_discovery.consul.health,
+                    passing=True,
+                    watch_seconds=service_discovery.consul_weight_watch_seconds,
+                    dc=self._current_dc
+                )
+                health_cache.add_listener(self._update_upstreams_service, True)
+                health_cache.start()
+
+    def _update_upstreams_service(self, key, values):
+        if values is not None:
+            servers = consul_parser.parse_consul_health_servers_data(values)
+            self._upstreams_servers[key] = servers
+            self._update_upstreams(key)
+
+    def _update_upstreams_config(self, key, values):
+        if values is not None:
+            for value in values:
+                if value['Value'] is not None:
+                    config = consul_parser.parse_consul_upstream_config(value)
+                    key = value['Key'].split('/')[1]
+                    if key in self._upstream_list:
+                        self._upstreams_config[key] = config
+                        self._update_upstreams(key)
+
+    def _update_upstreams(self, key):
+        with self.lock:
+            self.upstreams[key] = Upstream(key, self._upstreams_config.get(key, {}),
+                                           self._upstreams_servers.get(key, []))
+
+    def _stop_shared_objects_manager(self):
+        self._shared_objects_manager.shutdown()

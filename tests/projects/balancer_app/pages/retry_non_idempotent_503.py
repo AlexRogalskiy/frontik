@@ -11,14 +11,22 @@ from tests.projects.balancer_app.pages import check_all_requests_done
 
 class Page(PageHandler):
     def get_page(self):
-        self.application.upstreams['retry_non_idempotent_503'] = Upstream('retry_non_idempotent_503',
-                                                                          {'retry_policy': {
-                                                                              503: {"idempotent": "true"}}},
-                                                                          [get_server(self, 'broken'),
-                                                                           get_server(self, 'normal')])
-        self.application.upstreams['do_not_retry_non_idempotent_503'] = Upstream('do_not_retry_non_idempotent_503', {},
-                                                                                 [get_server(self, 'broken'),
-                                                                                  get_server(self, 'normal')])
+        idempotent_retry_policy = {
+            'retry_policy': {
+                503: {
+                    "idempotent": "true"
+                }
+            }
+        }
+        self.application.upstream_caches.upstreams['retry_non_idempotent_503'] = Upstream('retry_non_idempotent_503',
+                                                                                          idempotent_retry_policy,
+                                                                                          [get_server(self, 'broken'),
+                                                                                           get_server(self, 'normal')])
+        self.application.upstream_caches.upstreams['do_not_retry_non_idempotent_503'] = Upstream(
+            'do_not_retry_non_idempotent_503', {},
+            [get_server(self, 'broken'),
+             get_server(self, 'normal')]
+        )
 
         def check_requests_cb():
             check_all_requests_done(self, 'retry_non_idempotent_503')

@@ -1,6 +1,5 @@
 import asyncio
 import importlib
-import multiprocessing
 import sys
 import time
 import traceback
@@ -10,13 +9,12 @@ import logging
 
 import pycurl
 import tornado
-from consul.base import KVCache, HealthCache
 from lxml import etree
 from tornado.options import options
 from tornado.httpclient import AsyncHTTPClient
 from tornado.stack_context import StackContext
 from tornado.web import Application, RequestHandler
-from http_client import HttpClientFactory, Upstream, consul_parser, UpstreamStore
+from http_client import HttpClientFactory
 
 import frontik.producers.json_producer
 import frontik.producers.xml_producer
@@ -25,7 +23,7 @@ from frontik.debug import DebugTransform
 from frontik.handler import ErrorHandler
 from frontik.loggers import CUSTOM_JSON_EXTRA, JSON_REQUESTS_LOGGER
 from frontik.routing import FileMappingRouter, FrontikRouter
-from frontik.service_discovery import get_async_service_discovery, get_sync_service_discovery
+from frontik.service_discovery import get_async_service_discovery, UpstreamStoreSharedMemory, UpstreamCaches
 from frontik.version import version as frontik_version
 
 app_logger = logging.getLogger('http_client')
@@ -125,17 +123,8 @@ class FrontikApplication(Application):
         self.service_discovery_client = None
         self.tornado_http_client = None
         self.http_client_factory = None
-
-        self.upstream_list = options.upstreams.split(',')
-        self.datacenter_list = options.datacenters.split(',')
-        self.current_dc = options.datacenter
-        self.allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
-        self.upstreams_config = {}
-        self.upstreams_servers = {}
-        self.shared_objects_manager = multiprocessing.Manager()
-        self.upstreams = self.shared_objects_manager.dict()
-        self.lock = multiprocessing.Lock()
         self.upstream_store = None
+        self.upstream_caches = UpstreamCaches()
         self.router = FrontikRouter(self)
 
         core_handlers = [
@@ -147,68 +136,14 @@ class FrontikApplication(Application):
         if options.debug:
             core_handlers.insert(0, (r'/pydevd/?', PydevdHandler))
         if options.consul_enabled and not options.is_test:
-            service_discovery = get_sync_service_discovery(options)
-            self.upstream_cache = KVCache(
-                service_discovery.consul.kv,
-                path='upstream/',
-                watch_seconds=service_discovery.consul_weight_watch_seconds,
-                total_timeout=service_discovery.consul_weight_total_timeout_sec,
-                cache_initial_warmup_timeout=service_discovery.consul_cache_initial_warmup_timeout_sec,
-                consistency_mode=service_discovery.consul_weight_consistency_mode,
-                recurse=True
-            )
-            self.upstream_cache.add_listener(self._update_upstreams_config, True)
-            self.upstream_cache.start()
-            for upstream in self.upstream_list:
-                app_logger.info(f'add upstream {upstream}')
-                if self.allow_cross_dc_requests:
-                    for dc in self.datacenter_list:
-                        health_cache = HealthCache(
-                            service=upstream,
-                            health_client=service_discovery.consul.health,
-                            passing=True,
-                            watch_seconds=service_discovery.consul_weight_watch_seconds,
-                            dc=dc.lower()
-                        )
-                        health_cache.add_listener(self._update_upstreams_service, True)
-                        health_cache.start()
-                else:
-                    health_cache = HealthCache(
-                        service=upstream,
-                        health_client=service_discovery.consul.health,
-                        passing=True,
-                        watch_seconds=service_discovery.consul_weight_watch_seconds,
-                        dc=self.current_dc
-                    )
-                    health_cache.add_listener(self._update_upstreams_service, True)
-                    health_cache.start()
+            self.upstream_caches.initial_upstreams_caches()
 
         super().__init__(core_handlers, **tornado_settings)
-
-    def _update_upstreams_service(self, key, values):
-        if values is not None:
-            servers = consul_parser.parse_consul_health_servers_data(values)
-            self.upstreams_servers[key] = servers
-            self._update_upstreams(key)
-
-    def _update_upstreams_config(self, key, values):
-        if values is not None:
-            for value in values:
-                if value['Value'] is not None:
-                    config = consul_parser.parse_consul_upstream_config(value)
-                    key = value['Key'].split('/')[1]
-                    if key in self.upstream_list:
-                        self.upstreams_config[key] = config
-                        self._update_upstreams(key)
-
-    def _update_upstreams(self, key):
-        with self.lock:
-            self.upstreams[key] = Upstream(key, self.upstreams_config.get(key, {}), self.upstreams_servers.get(key, []))
 
     async def init(self):
         self.service_discovery_client = get_async_service_discovery(options)
         self.transforms.insert(0, partial(DebugTransform, self))
-        self.upstream_store = UpstreamStoreSharedMemory(self.lock, self.upstreams)
+        self.upstream_store = UpstreamStoreSharedMemory(self.upstream_caches.lock, self.upstream_caches.upstreams)
 
         AsyncHTTPClient.configure('tornado.curl_httpclient.CurlAsyncHTTPClient', max_clients=options.max_http_clients)
         self.tornado_http_client = AsyncHTTPClient()
@@ -334,22 +269,3 @@ class FrontikApplication(Application):
 
     def get_sentry_logger(self, request: 'HTTPServerRequest') -> 'Optional[SentryLogger]':  # pragma: no cover
         pass
-
-    def _stop_shared_objects_manager(self):
-        self.shared_objects_manager.shutdown()
-
-
-class UpstreamStoreSharedMemory(UpstreamStore):
-    """
-    Implementation for processing upstream via shared memory
-    """
-
-    def __init__(self, lock, upstreams):
-        self.lock = lock
-        self.upstreams = upstreams
-
-    def get_upstream(self, host):
-        with self.lock:
-            shared_upstream = self.upstreams.get(host, None)
-
-        return shared_upstream
