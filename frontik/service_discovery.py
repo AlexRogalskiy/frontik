@@ -1,5 +1,6 @@
 import logging
 import multiprocessing
+from multiprocessing.managers import BaseManager, DictProxy
 
 from consul import Check, Consul
 from consul.aio import Consul as AsyncConsul
@@ -199,7 +200,9 @@ class UpstreamCaches:
         self._datacenter_list = options.datacenters
         self._current_dc = options.datacenter
         self._allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
-        self._shared_objects_manager = multiprocessing.Manager()
+        BaseManager.register('dict', dict, DictProxy)
+        self._shared_objects_manager = BaseManager(address=('127.0.0.1', 50000))
+        self._shared_objects_manager.start()
         self.upstreams = self._shared_objects_manager.dict()
         self.lock = multiprocessing.Lock()
 
