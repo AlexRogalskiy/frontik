@@ -1,6 +1,5 @@
 import logging
-from multiprocessing import Lock
-from multiprocessing.managers import SyncManager
+import multiprocessing
 
 from consul import Check, Consul
 from consul.aio import Consul as AsyncConsul
@@ -13,7 +12,8 @@ from frontik.version import version
 DEFAULT_WEIGHT = 100
 
 log = logging.getLogger('service_discovery')
-
+logger = multiprocessing.log_to_stderr()
+logger.setLevel(logging.NOTSET)
 
 def get_async_service_discovery(opts, *, event_loop=None):
     if not opts.consul_enabled:
@@ -199,10 +199,9 @@ class UpstreamCaches:
         self._datacenter_list = options.datacenters
         self._current_dc = options.datacenter
         self._allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
-        self.lock = Lock()
-        self._shared_objects_manager = SyncManager()
-        self._shared_objects_manager.start()
+        self._shared_objects_manager = multiprocessing.Manager()
         self.upstreams = self._shared_objects_manager.dict()
+        self.lock = multiprocessing.Lock()
 
     def initial_upstreams_caches(self):
         service_discovery = get_sync_service_discovery(options)
