@@ -194,8 +194,8 @@ class UpstreamCaches:
     def __init__(self):
         self._upstreams_config = {}
         self._upstreams_servers = {}
-        self._upstream_list = options.upstreams.split(',')
-        self._datacenter_list = options.datacenters.split(',')
+        self._upstream_list = options.upstreams
+        self._datacenter_list = options.datacenters
         self._current_dc = options.datacenter
         self._allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
         self._shared_objects_manager = multiprocessing.Manager()
