@@ -52,6 +52,10 @@ class HTTPErrorWithPostprocessors(tornado.web.HTTPError):
     pass
 
 
+class TypedArgumentError(tornado.web.HTTPError):
+    pass
+
+
 class JSONBodyParseError(tornado.web.HTTPError):
     def __init__(self):
         super(JSONBodyParseError, self).__init__(400, 'Failed to parse json in request body')
@@ -219,7 +223,7 @@ class PageHandler(RequestHandler):
             validated_value = self._validation_model(**params).dict().get(validator)
         except ValidationError:
             if default is _ARG_DEFAULT:
-                raise HTTPErrorWithPostprocessors(http.client.BAD_REQUEST, f'"{name}" argument is invalid')
+                raise TypedArgumentError(http.client.BAD_REQUEST, f'"{name}" argument is invalid')
             return default
 
         return validated_value
