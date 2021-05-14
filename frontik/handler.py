@@ -203,11 +203,14 @@ class PageHandler(RequestHandler):
         from_body: bool = False, array: bool = False, strip: bool = True
     ) -> Any:
         validator = validation.value
-        try:
-            params = {validation: default}
-            validated_default = self._validation_model(**params).dict().get(validator)
-        except ValidationError:
-            raise DefaultValueError
+        if default is not _ARG_DEFAULT:
+            try:
+                params = {validator: default}
+                validated_default = self._validation_model(**params).dict().get(validator)
+            except ValidationError:
+                raise DefaultValueError
+        else:
+            validated_default = default
 
         if array and from_body:
             value = self.get_body_arguments(name, strip)
@@ -229,7 +232,7 @@ class PageHandler(RequestHandler):
         return validated_value
 
     def get_str_argument(
-        self, name: str,  default: str = _ARG_DEFAULT, path_safe: bool = True, **kwargs
+        self, name: str, default: str = _ARG_DEFAULT, path_safe: bool = True, **kwargs
     ) -> Union[str, List[str]]:
         if path_safe:
             return self.get_validated_argument(name, Validators.PATH_SAFE_STRING, default=default, **kwargs)
@@ -244,7 +247,7 @@ class PageHandler(RequestHandler):
     def get_float_argument(
         self, name: str, default: float = _ARG_DEFAULT, **kwargs
     ) -> Union[float, List[float]]:
-        return self.get_validated_argument(name, Validators.FLOAT, default=default,  **kwargs)
+        return self.get_validated_argument(name, Validators.FLOAT, default=default, **kwargs)
 
     def _get_request_mime_type(self, request):
         content_type = request.headers.get('Content-Type', '')
