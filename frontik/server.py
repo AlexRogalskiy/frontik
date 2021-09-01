@@ -9,6 +9,7 @@ import signal
 import sys
 from concurrent.futures import ThreadPoolExecutor
 from functools import partial
+from pathlib import Path
 from typing import Type
 
 import tornado.autoreload
@@ -20,7 +21,7 @@ from tornado.platform.asyncio import BaseAsyncIOLoop
 
 from frontik.app import FrontikApplication
 from frontik.loggers import bootstrap_logger, bootstrap_core_logging, MDC
-from frontik.options import options
+from frontik.options import options, get_config_keys
 from frontik.process import fork_workers
 from frontik.request_context import get_request
 from frontik.service_discovery import get_sync_service_discovery
@@ -161,8 +162,27 @@ def parse_configs(config_files):
         None, [configs_to_read] if not isinstance(configs_to_read, (list, tuple)) else configs_to_read
     )
 
-    for config in configs_to_read:
-        parse_config_file(config, final=False)
+    def _enrich_file_with_overrides(file):
+        file_path = Path(file)
+        if not file_path.exists():
+            return []
+        overrides_path = file_path.parent.joinpath(f'{file_path.name}.d')
+        overrides = [file]
+        if overrides_path.exists() and overrides_path.is_dir():
+            overrides.extend([override_file for override_file in sorted(overrides_path.iterdir())])
+        return overrides
+
+    configs_to_read_with_overrides = [_enrich_file_with_overrides(file) for file in configs_to_read]
+
+    for config_with_overrides in filter(None, configs_to_read_with_overrides):
+        main_config = config_with_overrides[0]
+        parse_config_file(main_config, final=False)
+        config_key_to_source_file = {}
+        for config in config_with_overrides[1:]:
+            config_key_to_source_file.update({key: config for key in get_config_keys(config)})
+            parse_config_file(config, final=False)
+        for key, source_file in config_key_to_source_file.items():
+            print(f'{key} is effectively loaded from {source_file}')
 
     # override options from config with command line options
     parse_command_line(final=False)
@@ -170,8 +190,6 @@ def parse_configs(config_files):
     bootstrap_core_logging()
     for config in configs_to_read:
         log.debug('using config: %s', config)
-        if options.autoreload:
-            tornado.autoreload.watch(config)
 
 
 async def _init_app(app: FrontikApplication, ioloop: BaseAsyncIOLoop, count_down_lock,
