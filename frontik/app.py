@@ -244,7 +244,9 @@ class FrontikApplication(Application):
             'datacenter': options.datacenter,
             'workers': {
                 'total': len(self.http_client_factory.tornado_http_client._curls),
-                'free': len(self.http_client_factory.tornado_http_client._free_list)
+                'free': len(self.http_client_factory.tornado_http_client._free_list),
+                'prop_in_frontik_cfg': options.test_prop if hasattr(options, 'test_prop') else 'not_defined',
+                'prop_in_custom_cfg': self.config.test_prop if hasattr(self.config, 'test_prop') else 'not_defined'
             }
         }
 

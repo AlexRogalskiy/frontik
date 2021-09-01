@@ -19,6 +19,7 @@ def get_config_keys(path):
     return filter(lambda key: not key.startswith('__'), config.keys())
 
 
+define('test_prop', default=None, type=str)
 define('app', default=None, type=str)
 define('app_class', default=None, type=str)
 define('workers', default=1, type=int)
