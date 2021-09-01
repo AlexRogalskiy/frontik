@@ -1,11 +1,23 @@
 import logging.handlers
+import os
 
+from tornado.escape import native_str
 from tornado.options import define, options as tornado_options
+from tornado.util import exec_in
 
 LOG_DIR_OPTION_NAME = 'log_dir'
 STDERR_LOG_OPTION_NAME = 'stderr_log'
 
 options = tornado_options
+
+
+def get_config_keys(path):
+    # partial copy of tornado.options.OptionParser.parse_config_file
+    config = {'__file__': os.path.abspath(path)}
+    with open(path, 'rb') as f:
+        exec_in(native_str(f.read()), config, config)
+    return filter(lambda key: not key.startswith('__'), config.keys())
+
 
 define('app', default=None, type=str)
 define('app_class', default=None, type=str)
