@@ -200,10 +200,10 @@ class UpstreamCaches:
         self._datacenter_list = options.datacenters
         self._current_dc = options.datacenter
         self._allow_cross_dc_requests = options.http_client_allow_cross_datacenter_requests
-        self._shared_objects_manager = multiprocessing.Manager()
-
-        self.upstreams = self._shared_objects_manager.dict()
         self.lock = multiprocessing.Lock()
+        with self.lock:
+            self._shared_objects_manager = multiprocessing.Manager()
+            self.upstreams = self._shared_objects_manager.dict()
 
     def initial_upstreams_caches(self):
         service_discovery = get_sync_service_discovery(options)
